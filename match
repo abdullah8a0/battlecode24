@@ -1,0 +1,97 @@
+#!/bin/env python3
+
+import sys
+import re
+import os
+import subprocess
+
+def call_fzf(lin: str, **kwargs):
+    args = ["fzf"]
+    for k, v in kwargs.items():
+        args.append(f"--{k}")
+        args.append(v)
+    if "height" not in kwargs:
+        args.append("--height")
+        args.append("50%")
+    if "border" not in kwargs:
+        args.append("--border")
+    if "reverse" not in kwargs:
+        args.append("--reverse")
+
+    p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    out, _ = p.communicate(lin.encode())
+    return out.decode().strip()
+
+
+def read_maps():
+    args = ["./gradlew", "listMaps"]
+    p = subprocess.Popen(args, stdout=subprocess.PIPE)
+    out, _ = p.communicate()
+    return out.decode().split("\n")
+
+
+ignore_header = r"^> Task :listMaps"
+ignore_footer = r"^BUILD SUCCESSFUL in .*"
+ignore_summary = r"executed$"
+ignore_maps = re.compile(
+    "|".join([ignore_header, ignore_footer, ignore_summary]))
+
+
+def edit_properties(map_name: str, playerA: str, playerB: str):
+    debug = "false"
+    outputVerbose = "true"
+    showIndicators = "true"
+    validateMaps = "true"
+    alternateOrder = "false"
+    compatibilityClient = "true"
+    with open("gradle.properties", "w") as f:
+        f.write(f"maps={map_name}\n")
+        f.write(f"teamA={playerA}\n")
+        f.write(f"teamB={playerB}\n")
+        f.write(f"debug={debug}\n")
+        f.write(f"outputVerbose={outputVerbose}\n")
+        f.write(f"showIndicators={showIndicators}\n")
+        f.write(f"validateMaps={validateMaps}\n")
+        f.write(f"alternateOrder={alternateOrder}\n")
+        f.write(f"compatibilityClient={compatibilityClient}\n")
+
+
+def main():
+    maps = read_maps()
+    maps = [m for m in maps if m != ""]
+    maps = [m for m in maps if not ignore_maps.match(m)]
+    maps.insert(0, "prev")
+
+    chosen_map = call_fzf("\n".join(maps), prompt="Choose a map")
+    if chosen_map == "prev":
+        args = ["./gradlew", "run"]
+        p = subprocess.Popen(args)
+        p.wait()
+        sys.exit(0)
+    if chosen_map == "":
+        sys.exit(1)
+    print(chosen_map)
+
+    players = os.listdir("./src")
+    players = [p for p in players if os.path.isdir(os.path.join("./src", p))]
+
+    playerA = call_fzf("\n".join(players), prompt="Choose player A")
+    if playerA == "":
+        sys.exit(1)
+
+    print(playerA)
+    playerB = call_fzf("\n".join(players), prompt="Choose player B")
+    if playerB == "":
+        sys.exit(1)
+
+    print(playerB)
+
+    edit_properties(chosen_map, playerA, playerB)
+
+    args = ["./gradlew", "run"]
+    p = subprocess.Popen(args)
+    p.wait()
+
+
+if __name__ == "__main__":
+    main()
